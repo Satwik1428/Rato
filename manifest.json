@@ -1,0 +1,24 @@
+{
+    "manifest_version": 3,
+    "name": "Rato",
+    "version": "1.0",
+    "description": "An extension that shows IMDB and rotten tomatoes ratings.",
+    "permissions": ["storage"],
+    "host_permissions": ["https://www.netflix.com/*",
+        "https://www.primevideo.com/*",
+        "https://www.hotstar.com/*"],
+
+    "content_scripts": [
+        {
+            "matches": [
+        "https://www.netflix.com/*",
+        "https://www.primevideo.com/*",
+        "https://www.hotstar.com/*"],
+
+            "js": ["content/content.js"]
+        }
+    ],
+    "background":{
+        "service_worker": "background/background.js"
+    }
+}

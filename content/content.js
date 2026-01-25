@@ -1,72 +1,124 @@
-let hostname = window.location.hostname;
-hostname = hostname.toLowerCase();
+//debug
+console.log("🚀 Content script loaded!");
+console.log("Current URL:", window.location.href);
+
+//platform detection
+
+let hostname = window.location.hostname.toLowerCase();
 let platform = "";
-//detecting platform on our own instead of taking permission from user
-if(hostname.includes("netflix.com"))
-{
+
+if (hostname.includes("netflix.com")) {
     platform = "Netflix";
 }
-else if(hostname.includes("primevideo.com"))
-{
+else if (hostname.includes("primevideo.com")) {
     platform = "PrimeVideo";
 }
-else if(hostname.includes("hotstar.com") || hostname.includes("disneyplus.com"))
-{
+else if (hostname.includes("hotstar.com") || hostname.includes("disneyplus.com")) {
     platform = "Hotstar";
 }
 
-let title = "";
-if(platform === "Netflix")
-{
-    title = getNetflixTitle();
-}
-else if(platform === "PrimeVideo")
-{
-    title = getPrimeVideoTitle();
-}
-else if(platform === "Hotstar")
-{
-    title = getHotstarTitle();
-}
+console.log(" Platform detected:", platform);
 
-//getting title of series or movie in Netflix
-function getNetflixTitle()
-{
-    title = document.querySelector(".title-logo");
-    if(!title)
-    {
-        return null;
+
+
+async function getTitle() {
+    if (platform === "Netflix") {
+        return await waitForNetflixTitle();
     }
-    title = title.getAttribute("alt");
-    return title || null;
+    if (platform === "PrimeVideo") {
+        return getPrimeVideoTitle();
+    }
+    if (platform === "Hotstar") {
+        return null; // later
+    }
+    return null;
 }
 
-/*As netfix is SPA, its DOM changes without reloading so we need to wait for title if its not present initially
-so we are waiting using promise and detecting change in DOM using mutation Observer*/
+//netflix title extraction
 
-function waitForNetflixTitle()
-{
+function getNetflixTitle() {
+    const titleElement = document.querySelector(".title-logo");
+    if (!titleElement) return null;
+    return titleElement.getAttribute("alt") || null;
+}
+
+function waitForNetflixTitle(timeout = 10000) {
     return new Promise((resolve) => {
-        //check initial title
-        const newTitle = getNetflixTitle();
-        if(newTitle)
-        {
-            resolve(newTitle);
+        const initialTitle = getNetflixTitle();
+        if (initialTitle) {
+            resolve(initialTitle);
             return;
         }
 
-        //if DOM changes something
+        let timeoutId;
+
         const observer = new MutationObserver(() => {
-            newTitle = getNetflixTitle();
-            if(newTitle)
-            {
-                observer.disconnect();//stop observing
+            const newTitle = getNetflixTitle();
+            if (newTitle) {
+                observer.disconnect();
+                clearTimeout(timeoutId);
                 resolve(newTitle);
             }
         });
-        observer.observe(document.body,{
+
+        observer.observe(document.body, {
             childList: true,
             subtree: true
         });
+
+        timeoutId = setTimeout(() => {
+            observer.disconnect();
+            resolve(null);
+        }, timeout);
     });
+}
+//prime title extraction
+function getPrimeVideoTitle(){
+    let titleElement = document.querySelector('h1[data-automation-id="title"]');
+    if(titleElement)
+    {
+        return titleElement.textContent.trim() || null;
+    }
+
+    titleElement = document.querySelector('h2[data-testid="title-art"]');
+    if(titleElement)
+    {
+        return titleElement.getAttribute("aria-label") || null;
+
+    }
+    return null;
+}
+
+// Prime needs a CONTINUOUS watcher
+let lastPrimeTitle = null;
+
+function startPrimeTitleWatcher() {
+    console.log("Prime title watcher started");
+
+    const observer = new MutationObserver(() => {
+        const currentTitle = getPrimeVideoTitle();
+
+        if (currentTitle && currentTitle !== lastPrimeTitle) {
+            lastPrimeTitle = currentTitle;
+            console.log("Prime title detected:", currentTitle);
+        }
+    });
+
+    observer.observe(document.body, {
+        childList: true,
+        subtree: true,
+        attributes: true,
+        attributeFilter: ["aria-label", "alt"]
+    });
+}
+
+
+if (platform === "Netflix") {
+    getTitle().then(title => {
+        console.log("Netflix title:", title);
+    });
+}
+
+if (platform === "PrimeVideo") {
+    startPrimeTitleWatcher();
 }

@@ -1,124 +1,134 @@
 //debug
-console.log("🚀 Content script loaded!");
+console.log(" Content script loaded!");
 console.log("Current URL:", window.location.href);
 
 //platform detection
-
 let hostname = window.location.hostname.toLowerCase();
-let platform = "";
 
 if (hostname.includes("netflix.com")) {
-    platform = "Netflix";
-}
-else if (hostname.includes("primevideo.com")) {
-    platform = "PrimeVideo";
-}
-else if (hostname.includes("hotstar.com") || hostname.includes("disneyplus.com")) {
-    platform = "Hotstar";
-}
+    console.log(" Platform detected: Netflix");
 
-console.log(" Platform detected:", platform);
-
-
-
-async function getTitle() {
-    if (platform === "Netflix") {
-        return await waitForNetflixTitle();
+    //netflix title extraction
+    function isDetailPageNetflix() {
+        return !!document.querySelector(".playerModel--player__storyArt");
     }
-    if (platform === "PrimeVideo") {
-        return getPrimeVideoTitle();
-    }
-    if (platform === "Hotstar") {
-        return null; // later
-    }
-    return null;
-}
 
-//netflix title extraction
-
-function getNetflixTitle() {
-    const titleElement = document.querySelector(".title-logo");
-    if (!titleElement) return null;
-    return titleElement.getAttribute("alt") || null;
-}
-
-function waitForNetflixTitle(timeout = 10000) {
-    return new Promise((resolve) => {
-        const initialTitle = getNetflixTitle();
-        if (initialTitle) {
-            resolve(initialTitle);
-            return;
+    function getNetflixTitle() {
+        if (isDetailPageNetflix()) {
+            const detailElement = document.querySelector(".playerModel--player__storyArt");
+            if (detailElement) {
+                return detailElement.getAttribute("alt") || null;
+            }
+        }
+        let titleElement = document.querySelector(".previewModal--boxart");
+        if (titleElement) {
+            return titleElement.getAttribute("alt") || null;
         }
 
-        let timeoutId;
-
+        titleElement = document.querySelector(".title-logo");
+        if (titleElement) {
+            return titleElement.getAttribute("alt") || null;
+        }
+        return null;
+    }
+    let lastNetflixTitle = null;
+    function netflixTitleWatcher() {
         const observer = new MutationObserver(() => {
-            const newTitle = getNetflixTitle();
-            if (newTitle) {
-                observer.disconnect();
-                clearTimeout(timeoutId);
-                resolve(newTitle);
+            const currentTitle = getNetflixTitle();
+            if (currentTitle) {
+                if (currentTitle != lastNetflixTitle) {
+                    lastNetflixTitle = currentTitle;
+                    console.log("Netflix title detected:", currentTitle);
+                }
+            } else {
+                if (lastNetflixTitle !== null) {
+                    lastNetflixTitle = null;
+                    console.log("Netflix title not found");
+                }
             }
         });
-
         observer.observe(document.body, {
             childList: true,
-            subtree: true
+            subtree: true,
+            attributes: true,
+            attributeFilter: ["aria-label", "alt"]
         });
-
-        timeoutId = setTimeout(() => {
-            observer.disconnect();
-            resolve(null);
-        }, timeout);
-    });
-}
-//prime title extraction
-function getPrimeVideoTitle(){
-    let titleElement = document.querySelector('h1[data-automation-id="title"]');
-    if(titleElement)
-    {
-        return titleElement.textContent.trim() || null;
     }
 
-    titleElement = document.querySelector('h2[data-testid="title-art"]');
-    if(titleElement)
-    {
-        return titleElement.getAttribute("aria-label") || null;
+    const initialTitle = getNetflixTitle();
+    if (initialTitle) {
+        console.log("Netflix title detected:", initialTitle);
+    }
+    netflixTitleWatcher();
+}
 
+function createTitleObject(netflix)
+{
+    return {
+        netflix: {
+            id: netflix.id,
+            title: netflix.title,
+            type: netflix.type,
+            year: netflix.year || null,
+            url: netflix.url
+        },
+
+        imdb: {
+            id: null,
+            rating: null,
+            votes: null,
+            genres: [],
+            topEpisodes: []
+        },
+
+        rt: {
+            tomatometer: null,
+            audienceScore: null,
+            topEpisodes: []
+        }
+    };
+}
+
+//store titles
+function saveTitle(titleObj){
+    const key = "netflix_titles";
+    const existing = JSON.parse(localStorage.getItem(key)) || [];
+    const dup = existing.some(t => t.netflix.id === titleObj.netflix.id);
+    if(!dup)
+    {
+        existing.push(titleObj);
+        localStorage.setItem(key, JSON.stringify(existing));
+        console.log("Title saved:", titleObj.netflix.title);
+    }
+    else
+    {
+        console.log("Title already exists:", titleObj.netflix.title);
+    }
+
+}
+//in above function we are saving the title to the local storage
+//some will internally loop through existing array and check for duplicates
+//now we need to fetch the title from the local storage
+function getTitles(){
+    const key = "netflix_titles";
+    const existing = JSON.parse(localStorage.getItem(key)) || [];
+    return existing;
+}
+//match the title and store the netflix id on netflix.id
+const url = window.location.href;
+function getNetflixId(url)
+{
+    const matchid = url.match(/title\/(\d+)/);
+    if(matchid)
+    {
+        return matchid[1];
     }
     return null;
 }
 
-// Prime needs a CONTINUOUS watcher
-let lastPrimeTitle = null;
-
-function startPrimeTitleWatcher() {
-    console.log("Prime title watcher started");
-
-    const observer = new MutationObserver(() => {
-        const currentTitle = getPrimeVideoTitle();
-
-        if (currentTitle && currentTitle !== lastPrimeTitle) {
-            lastPrimeTitle = currentTitle;
-            console.log("Prime title detected:", currentTitle);
-        }
-    });
-
-    observer.observe(document.body, {
-        childList: true,
-        subtree: true,
-        attributes: true,
-        attributeFilter: ["aria-label", "alt"]
-    });
+const id = getNetflixId(url);
+if(id)
+{
+    console.log("Netflix ID:", id);
 }
-
-
-if (platform === "Netflix") {
-    getTitle().then(title => {
-        console.log("Netflix title:", title);
-    });
-}
-
-if (platform === "PrimeVideo") {
-    startPrimeTitleWatcher();
-}
+//add found id to netflix.id

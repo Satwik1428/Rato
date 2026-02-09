@@ -49,17 +49,17 @@ if (hostname.includes("netflix.com")) {
         });
         observer.observe(document.body, {
             childList: true,
-            subtree: true,
-            attributes: true,
-            attributeFilter: ["aria-label", "alt"]
+            subtree: true
         });
     }
 
     const initialTitle = getNetflixTitle();
-    if (initialTitle) {
+    if (initialTitle && window.location.pathname.startsWith("/title/")) {
         console.log("Netflix title detected:", initialTitle);
     }
-    netflixTitleWatcher();
+    if (window.location.pathname.startsWith("/title/")) {
+        netflixTitleWatcher();
+    }
 }
 
 function createTitleObject(netflix)
@@ -114,11 +114,31 @@ function getTitles(){
     const existing = JSON.parse(localStorage.getItem(key)) || [];
     return existing;
 }
+
+function isNetflixDetailPage()
+{
+    if(window.location.pathname.startsWith("/title/"))
+    {
+        return true;
+    }
+    const params = new URLSearchParams(window.location.search);
+    if(params.has("jbv"))
+    {
+        return true;
+    }
+    return false;
+}
 //match the title and store the netflix id on netflix.id
 const url = window.location.href;
 function getNetflixId(url)
 {
-    const matchid = url.match(/title\/(\d+)/);
+    let matchid = url.match(/title\/(\d+)/);
+    if(matchid)
+    {
+        return matchid[1];
+    }
+    //jvb case
+    matchid = url.match(/jbv=(\d+)/);
     if(matchid)
     {
         return matchid[1];
@@ -131,4 +151,60 @@ if(id)
 {
     console.log("Netflix ID:", id);
 }
-//add found id to netflix.id
+
+//inject fake rating
+function injectRating(rating) {
+    if (document.querySelector("#imdb-rating")) return;
+    const badge = document.createElement("div");
+    badge.id = "imdb-rating";
+    badge.innerText = `IMDb: ${rating}`;
+    badge.style.color = "white";
+    badge.style.fontSize = "16px";
+    badge.style.fontWeight = "600";
+    badge.style.marginTop = "10px";
+    badge.style.zIndex = "9999";
+    document.body.appendChild(badge);
+}
+
+function waitForDetailPage() {
+    if (!isNetflixDetailPage()) return;
+    if(!isDetailPageNetflix()) return;
+    const id = getNetflixId(window.location.href);
+    if (!id) return;
+    console.log("Netflix ID (detail page):", id);
+    injectRating("8.5"); // dummy rating
+}
+waitForDetailPage();
+//since we cannot identify URL changes in netflix we use mutation observer to find the change in URL
+//callback function is a function used as a parameter and we will call it when there is any change in URL
+//while MutationObserver(check for chnages in DOM) is running it will check for the change in URL and call the callback function if there is any change
+
+function onUrlChange(callback) {
+    let lastUrl = location.href;
+    new MutationObserver(() => {
+        const currentUrl = location.href;
+        if (currentUrl !== lastUrl) {
+            lastUrl = currentUrl;
+            callback(currentUrl);
+        }
+    }).observe(document, { subtree: true, childList: true });
+}
+
+onUrlChange((url) => {
+    console.log("URL changed to:", url);
+    waitForDetailPage();
+});
+//add imdb rating to the netflix page
+async function addImdbRating(){
+    const title = getNetflixTitle();
+    if(!title)
+    {
+        console.log("No title found");
+    }
+    console.log("Title found:", title);
+    const url = `https://www.omdbapi.com/?s=${title}&apikey=20bcd4d1`;
+    const res = await fetch(url);//it will wait for response from the server
+    const data = await res.json();//it will wait for the response to be parsed as json
+    console.log(data);
+}
+addImdbRating();

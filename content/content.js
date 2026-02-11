@@ -146,10 +146,10 @@ function getNetflixId(url)
     return null;
 }
 
-const id = getNetflixId(url);
-if(id)
+const NetflixId = getNetflixId(url);
+if(NetflixId)
 {
-    console.log("Netflix ID:", id);
+    console.log("Netflix ID:", NetflixId);
 }
 
 //inject fake rating
@@ -172,7 +172,6 @@ function waitForDetailPage() {
     const id = getNetflixId(window.location.href);
     if (!id) return;
     console.log("Netflix ID (detail page):", id);
-    injectRating("8.5"); // dummy rating
 }
 waitForDetailPage();
 //since we cannot identify URL changes in netflix we use mutation observer to find the change in URL
@@ -194,17 +193,63 @@ onUrlChange((url) => {
     console.log("URL changed to:", url);
     waitForDetailPage();
 });
-//add imdb rating to the netflix page
-async function addImdbRating(){
-    const title = getNetflixTitle();
-    if(!title)
-    {
-        console.log("No title found");
-    }
-    console.log("Title found:", title);
-    const url = `https://www.omdbapi.com/?s=${title}&apikey=20bcd4d1`;
-    const res = await fetch(url);//it will wait for response from the server
-    const data = await res.json();//it will wait for the response to be parsed as json
-    console.log(data);
+//caching of Imdb data
+const IMDB_CACHE_KEY = "imdb_cache";
+function getImdbCache(){
+    return JSON.parse(localStorage.getItem(IMDB_CACHE_KEY)) || {};
 }
-addImdbRating();
+function getImdbCacheById(NetflixId)
+{
+    const cache = getImdbCache();
+    return cache[NetflixId] || null;
+}
+function saveImbdData(NetflixId, data)
+{
+    const cache = getImdbCache();
+    cache[NetflixId] = data;
+    localStorage.setItem(IMDB_CACHE_KEY, JSON.stringify(cache));
+}
+//get imdb id from netflix
+function getCachedImdbRating(NetflixId)
+{
+    const cache = getImdbCacheById(NetflixId);
+    if(cache)
+    {
+        return cache.rating;
+    }
+    return null;
+}
+const rating = getCachedImdbRating(NetflixId);
+if(rating)
+{
+    injectRating(rating);
+}
+//unified function we add and get ratings
+async function addImdb(NetflixId)
+{
+    const cache = getImdbCacheById(NetflixId);
+    if(cache)
+    {
+        injectRating(cache.rating);
+    }
+    else
+    {
+        const title = getNetflixTitle();
+        if(!title)
+        {
+            console.log("No title found");
+            return;
+        }
+        try{
+            const searchurl = `https://www.omdbapi.com/?apikey=20bcd4d1&s=${encodeURIComponent(title)}`;
+            const response = await fetch(searchurl);
+            const data = await response.json();
+            if(!data.Search || !data.Search.length)
+            {
+                console.log("No imdb results found");
+                return;
+            }
+            const imdbId = data.Search[0].imdbID;
+        }
+    }
+}

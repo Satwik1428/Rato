@@ -153,16 +153,18 @@ if(NetflixId)
 }
 
 //inject fake rating
-function injectRating(rating) {
-    if (document.querySelector("#imdb-rating")) return;
+function injectRating(text) {
+    console.log("Injecting rating:", text);
     const badge = document.createElement("div");
-    badge.id = "imdb-rating";
-    badge.innerText = `IMDb: ${rating}`;
-    badge.style.color = "white";
-    badge.style.fontSize = "16px";
-    badge.style.fontWeight = "600";
-    badge.style.marginTop = "10px";
-    badge.style.zIndex = "9999";
+    badge.id = "imdb-rating-test";
+    badge.innerText = text;
+    badge.style.position = "fixed";
+    badge.style.top = "20px";
+    badge.style.right = "20px";
+    badge.style.background = "black";
+    badge.style.color = "yellow";
+    badge.style.padding = "10px";
+    badge.style.zIndex = "999999";
     document.body.appendChild(badge);
 }
 
@@ -192,6 +194,9 @@ function onUrlChange(callback) {
 onUrlChange((url) => {
     console.log("URL changed to:", url);
     waitForDetailPage();
+    const NetflixId = getNetflixId(url);
+    if(!NetflixId) return;
+    addImdb(NetflixId);
 });
 //caching of Imdb data
 const IMDB_CACHE_KEY = "imdb_cache";
@@ -225,12 +230,18 @@ if(rating)
     injectRating(rating);
 }
 //unified function we add and get ratings
+//firstly we will check if the data is in cache
+//if it is found then we will inject the rating
+//if not found then we will fetch the data from the api and inject the rating
+//try and catch sequence it to avoid code breakout if any bug or network issue
 async function addImdb(NetflixId)
 {
+    console.log("Adding imdb rating for netflix id:", NetflixId);
     const cache = getImdbCacheById(NetflixId);
     if(cache)
     {
-        injectRating(cache.rating);
+        injectRating(`IMDb: ${cache.rating}   🍅${cache.rtScore || "N/A"}`);
+        return;
     }
     else
     {
@@ -241,7 +252,9 @@ async function addImdb(NetflixId)
             return;
         }
         try{
+            //fetch imdb data with title
             const searchurl = `https://www.omdbapi.com/?apikey=20bcd4d1&s=${encodeURIComponent(title)}`;
+            console.log("Fetching imdb data for title:", title);
             const response = await fetch(searchurl);
             const data = await response.json();
             if(!data.Search || !data.Search.length)
@@ -250,6 +263,40 @@ async function addImdb(NetflixId)
                 return;
             }
             const imdbId = data.Search[0].imdbID;
+            //get full imdb data
+            const imdburl = `https://www.omdbapi.com/?apikey=20bcd4d1&i=${imdbId}`;
+            console.log("Fetching imdb data for imdb id:", imdbId);
+            const response2 = await fetch(imdburl);
+            const imdbdata = await response2.json();
+            console.log("Imdb data:", imdbdata);
+            const rating = imdbdata.imdbRating;
+            const votes = imdbdata.imdbVotes;
+            console.log("Rating:", rating);
+            console.log("Votes:", votes);
+            //rotten tomatoes score
+            let rtScore = null;
+            if(imdbdata.Ratings && imdbdata.Ratings.length)
+            {
+                const rtRating = imdbdata.Ratings.find(r => r.Source === "Rotten Tomatoes");
+                if(rtRating)
+                {
+                    rtScore = rtRating.Value;
+                }
+            }
+            //storing imdb data in a object(it will store only relavent info from api data)
+            const payload = {
+                imdbId,
+                rating,
+                votes,
+                rtScore,
+                fetchedAt: Date.now()
+            }
+            saveImbdData(NetflixId, payload);
+            injectRating(`IMDb: ${rating}   🍅${rtScore || "N/A"}`);
+        }
+        catch(error)
+        {
+            console.log("Error fetching imdb data:", error);
         }
     }
 }

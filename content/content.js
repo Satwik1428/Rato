@@ -13,6 +13,7 @@ if (hostname.includes("netflix.com")) {
         return !!document.querySelector(".playerModel--player__storyArt");
     }
 
+    
     function getNetflixTitle() {
         if (isDetailPageNetflix()) {
             const detailElement = document.querySelector(".playerModel--player__storyArt");
@@ -154,18 +155,24 @@ if(NetflixId)
 
 //inject fake rating
 function injectRating(text) {
-    console.log("Injecting rating:", text);
+    if(document.querySelector("#imdb-rating")) return;
+    const container = document.querySelector(".buttonControls--container");
+    if(!container)
+    {
+        console.log("container not found");
+        return;
+    }
     const badge = document.createElement("div");
-    badge.id = "imdb-rating-test";
+    badge.id = "imdb-rating";
     badge.innerText = text;
-    badge.style.position = "fixed";
-    badge.style.top = "20px";
-    badge.style.right = "20px";
-    badge.style.background = "black";
-    badge.style.color = "yellow";
-    badge.style.padding = "10px";
-    badge.style.zIndex = "999999";
-    document.body.appendChild(badge);
+    badge.style.marginTop = "16px";
+    badge.style.fontSize = "18px";
+    badge.style.fontWeight = "600";
+    badge.style.color = "#ffffffff";
+    badge.style.display = "flex";
+    badge.style.gap = "14px";
+    badge.style.alignItems = "center";
+    container.parentElement.appendChild(badge);
 }
 
 function waitForDetailPage() {
@@ -292,7 +299,7 @@ async function addImdb(NetflixId)
                 fetchedAt: Date.now()
             }
             saveImbdData(NetflixId, payload);
-            injectRating(`IMDb: ${rating}   🍅${rtScore || "N/A"}`);
+            injectRating(`IMDb: ${rating}  , 🍅${rtScore || "N/A"}`);
         }
         catch(error)
         {

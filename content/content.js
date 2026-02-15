@@ -25,7 +25,7 @@ if (hostname.includes("netflix.com")) {
         if (titleElement) {
             return titleElement.getAttribute("alt") || null;
         }
-
+ 
         titleElement = document.querySelector(".title-logo");
         if (titleElement) {
             return titleElement.getAttribute("alt") || null;
@@ -156,6 +156,7 @@ if(NetflixId)
 //inject fake rating
 function injectRating(text) {
     if(document.querySelector("#imdb-rating")) return;
+    if(document.querySelector("#episode-ratings")) return;
     const container = document.querySelector(".buttonControls--container");
     if(!container)
     {
@@ -248,6 +249,10 @@ async function addImdb(NetflixId)
     if(cache)
     {
         injectRating(`IMDb: ${cache.rating}   🍅${cache.rtScore || "N/A"}`);
+        if(cache.episodes && cache.episodes.length)
+        {
+            injectEpisodesRatings(cache.episodes);
+        }
         return;
     }
     else
@@ -290,20 +295,123 @@ async function addImdb(NetflixId)
                     rtScore = rtRating.Value;
                 }
             }
+            let episodes = [];
+            //checking for type
+            if(imdbdata.Type === "series")
+            {
+                const totalSeasons = parseInt(imdbdata.totalSeasons);
+                episodes = await fetchAllSeasons(imdbId, totalSeasons);
+            }
             //storing imdb data in a object(it will store only relavent info from api data)
             const payload = {
                 imdbId,
                 rating,
                 votes,
                 rtScore,
+                episodes,
                 fetchedAt: Date.now()
             }
             saveImbdData(NetflixId, payload);
             injectRating(`IMDb: ${rating}  , 🍅${rtScore || "N/A"}`);
+            if(episodes.length)
+            {
+                observeSeason(episodes);
+            }
         }
         catch(error)
         {
             console.log("Error fetching imdb data:", error);
         }
     }
+}
+//fetch all seasons
+async function fetchAllSeasons(imdbId, totalSeasons)
+{
+    const seasonPromise = [];
+    for(let i = 1; i <= totalSeasons; i++)
+    {
+        const url = `https://www.omdbapi.com/?apikey=20bcd4d1&i=${imdbId}&Season=${i}`;
+        seasonPromise.push(fetch(url).then(response => response.json()))
+    }
+    const seasonData = await Promise.all(seasonPromise);
+    const allepisodes = [];
+    seasonData.forEach((season, index) => {
+        if(!season.Episodes) return;
+        season.Episodes.forEach((ep) => {
+            const rating = parseFloat(ep.imdbRating);
+            if(!isNaN(rating)) allepisodes.push({
+                season: index + 1,
+                episode: parseInt(ep.Episode),
+                rating
+            })
+        })
+    })
+    return allepisodes;
+}
+//get season data
+async function getSeasonData(imdbId, seasonNumber)
+{
+    const url = `https://www.omdbapi.com/?apikey=20bcd4d1&i=${imdbId}&Season=${seasonNumber}`;
+    const response = await fetch(url);
+    const data = await response.json();
+    if(!data.Episodes) return [];
+    return data.Episodes.map(ep => ({
+        season: seasonNumber,
+        episode: parseInt(ep.Episode),
+        title: ep.Title,
+        rating: parseFloat(ep.imdbRating)
+    }))
+}
+function getCurrentSeason()
+{
+    const season_label = document.querySelector('[data-uia="season-selector-dropdown"]');
+    if(!season_label) return 1;
+    const text = season_label.innerText;
+    const match = text.match(/\d+/);
+    if(match)
+    {
+        return parseInt(match[0]);
+    }
+    return 1;
+}
+function injectEpisodesRatings(episodes) {
+    const episodeCards = document.querySelectorAll(
+        ".titleCardList--container.episode-item"
+    );
+    if (!episodeCards.length) {
+        console.log("No episode cards found yet");
+        return;
+    }
+    episodeCards.forEach(card => {
+        if (card.querySelector(".imdb-episode-rating")) return;
+
+        const indexEl = card.querySelector(".titleCard-title_index");
+        if (!indexEl) return;
+
+        const episodeNumber = parseInt(indexEl.innerText.trim());
+        const currentSeason = getCurrentSeason();
+        const episodeData = episodes.find(ep => ep.season === currentSeason && ep.episode === episodeNumber);
+        if (!episodeData) return;
+        const titleWrapper = card.querySelector(".titleCardList-title");
+        if (!titleWrapper) return;
+
+        const ratingSpan = document.createElement("span");
+        ratingSpan.className = "imdb-episode-rating";
+        ratingSpan.innerText = ` ⭐ ${episodeData.rating}`;
+        ratingSpan.style.marginLeft = "8px";
+        ratingSpan.style.fontWeight = "600";
+        ratingSpan.style.color = "#ffd700";
+
+        titleWrapper.appendChild(ratingSpan);
+    });
+}
+function observeSeason(episodes)
+{
+    const observer = new MutationObserver(() => {
+        injectEpisodesRatings(episodes);
+    });
+    observer.observe(document.body, {
+        childList: true,
+        subtree: true
+    });
 }

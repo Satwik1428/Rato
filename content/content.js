@@ -260,38 +260,19 @@ async function addImdb(NetflixId)
             return;
         }
         try{
-            //fetch imdb data with title
-            const searchurl = `https://www.omdbapi.com/?apikey=20bcd4d1&s=${encodeURIComponent(title)}`;
-            console.log("Fetching imdb data for title:", title);
-            const response = await fetch(searchurl);
-            const data = await response.json();
-            if(!data.Search || !data.Search.length)
-            {
-                console.log("No imdb results found");
+            // fetch imdb data via background script to keep API key secure
+            console.log("Requesting imdb data from background for title:", title);
+            const response = await chrome.runtime.sendMessage({ action: "fetchImdb", title: title });
+            
+            if (response && response.error) {
+                console.log("Background script error or no results:", response.error);
                 return;
             }
-            const imdbId = data.Search[0].imdbID;
-            //get full imdb data
-            const imdburl = `https://www.omdbapi.com/?apikey=20bcd4d1&i=${imdbId}`;
-            console.log("Fetching imdb data for imdb id:", imdbId);
-            const response2 = await fetch(imdburl);
-            const imdbdata = await response2.json();
-            console.log("Imdb data:", imdbdata);
-            const rating = imdbdata.imdbRating;
-            const votes = imdbdata.imdbVotes;
-            console.log("Rating:", rating);
-            console.log("Votes:", votes);
-            //rotten tomatoes score
-            let rtScore = null;
-            if(imdbdata.Ratings && imdbdata.Ratings.length)
-            {
-                const rtRating = imdbdata.Ratings.find(r => r.Source === "Rotten Tomatoes");
-                if(rtRating)
-                {
-                    rtScore = rtRating.Value;
-                }
-            }
-            //storing imdb data in a object(it will store only relavent info from api data)
+
+            const { imdbId, rating, votes, rtScore } = response;
+            
+            // storing imdb data in an object (it will store only relevant info from api data)
+            let episodes = []; // Defined as empty to avoid reference error
             const payload = {
                 imdbId,
                 rating,
@@ -299,17 +280,16 @@ async function addImdb(NetflixId)
                 rtScore,
                 episodes,
                 fetchedAt: Date.now()
-            }
+            };
             saveImbdData(NetflixId, payload);
             injectRating(`IMDb: ${rating}  , 🍅${rtScore || "N/A"}`);
-            if(episodes.length)
-            {
+            
+            if (episodes.length && typeof observeSeason === 'function') {
                 observeSeason(episodes);
             }
         }
-        catch(error)
-        {
-            console.log("Error fetching imdb data:", error);
+        catch(error) {
+            console.log("Error fetching imdb data via message:", error);
         }
     }
 }
